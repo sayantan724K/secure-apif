@@ -64,36 +64,40 @@ def check_rate_limit(identifier: str):
 
 
 @app.post("/validate")
-async def validate(request: Request, payload: SecurityRequest):
-    identifier = payload.userId or request.client.host
-
+async def validate(request: Request):
     try:
-        blocked, reason = check_rate_limit(identifier)
-
-        if blocked:
-            logger.warning(f"Rate limit triggered for {identifier}: {reason}")
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "blocked": True,
-                    "reason": reason,
-                    "sanitizedOutput": None,
-                    "confidence": 0.99
-                },
-                headers={"Retry-After": "60"}
-            )
-
-        return {
-            "blocked": False,
-            "reason": "Input passed all security checks",
-            "sanitizedOutput": payload.input,
-            "confidence": 0.95
-        }
-
+        data = await request.json()
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid request")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "blocked": True,
+                "reason": "Invalid JSON format",
+                "sanitizedOutput": None,
+                "confidence": 0.99
+            }
+        )
 
+    identifier = data.get("userId") or request.client.host
 
-@app.get("/")
-def root():
-    return {"status": "running"}
+    blocked, reason = check_rate_limit(identifier)
+
+    if blocked:
+        logger.warning(f"Rate limit triggered for {identifier}: {reason}")
+        return JSONResponse(
+            status_code=429,
+            content={
+                "blocked": True,
+                "reason": reason,
+                "sanitizedOutput": None,
+                "confidence": 0.99
+            },
+            headers={"Retry-After": "60"}
+        )
+
+    return {
+        "blocked": False,
+        "reason": "Input passed all security checks",
+        "sanitizedOutput": data.get("input"),
+        "confidence": 0.95
+    }
